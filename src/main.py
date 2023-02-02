@@ -5,75 +5,81 @@
 #           reservations become available on the Ikon pass.
 #
 
+from ikon_scraper import IkonReserve
+
+import argparse
+import re
 import sys
-import ikonScraperInterface
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 import time
 
-# MACRO for if web driver should run in headless mode or not
-# Must be set to 1 if running on virtual server
-HEADLESS = 0
+# Web Driver Mode
+# Must be set to True if running on virtual server
+HEADLESS = False
 
-def main():	
-	"""Main function. initializes web driver, logs into ikon site,
-	and runs an infinite loop checking for openings of dates specified
-	by user.
-	"""
-	# list to store dates to reserve
-	datesToReserve = []
-	# list to store available dates
-	availableDates = []
-	# mountains to check for availability
-	mountainsToCheck = []
-	# dictionary to store which months to check. Gets updated.
-	monthsToCheck = {
-	1: "January",
-	2: "February",
-	3: "March",
-	4: "April",
-	5: "May",
-	6: "June"
-	}
+def main():
+    """
+    Main function. initializes web driver, logs into ikon site,
+    and runs an infinite loop checking for openings of dates specified
+    by user.
+    """
+    args = parseArguments()
+    ikon_email = args.get("email")
+    ikon_password = args.get("password")
 
-	# initialize web driver
-	if (HEADLESS):
-		options = Options()
-		options.add_argument('--headless')
-		options.add_argument('--disable-gpu')
-		options.add_argument("window-size=1024,768")
-		options.add_argument("--no-sandbox")
-		options.add_argument("--log-level=3");
-		driver = webdriver.Chrome(options=options)
-	else:
-		driver = webdriver.Chrome()
+    # Basic email validation
+    if not re.fullmatch(r"[^@]+@[^@]+\.[^@]+", ikon_email):
+        print("Hey, your email isn't valid!")
+        return False
 
-	# set page load timeout
-	driver.set_page_load_timeout(20)
+    # initialize web driver
+    if HEADLESS:
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--disable-gpu')
+        options.add_argument("window-size=1024,768")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--log-level=3")
+        driver = webdriver.Chrome(options=options)
+    else:
+        options = Options()
+        driver = webdriver.Chrome(options=options)
 
-	# login to ikon website
-	ikonScraperInterface.login(driver)
+    # set page load timeout
+    driver.set_page_load_timeout(20)
 
-	# remove months to check that have already been passed
-	ikonScraperInterface.updateMonthsToCheck(monthsToCheck)
+    ikon_reserve = IkonReserve(driver)
 
-	# fill up dates lists
-	ikonScraperInterface.addDatesToReserveToList(datesToReserve, mountainsToCheck)
-	ikonScraperInterface.addAvailableDatesToList(driver, availableDates, mountainsToCheck, monthsToCheck)
+    # login to ikon website
+    login_status = ikon_reserve.login(email=ikon_email, password=ikon_password)
+    if not login_status:
+        print("ERROR: Failed to login")
+        return False
 
-	# Constantly check for openings in reservations
-	while(True):
-		ikonScraperInterface.checkForOpenings(driver, availableDates, datesToReserve, mountainsToCheck, monthsToCheck)
-		print("Still checking")
+    # Constantly check for openings in reservations
+    while True:
+        ikon_reserve.checkForOpenings()
+        print("Still checking")
 
-		# sleep so CPU processing doesn't get taken up
-		time.sleep(2)
+        # sleep so CPU processing doesn't get taken up
+        time.sleep(2)
 
-	# close driver
-	driver.quit()
+    # close driver
+    driver.quit()
 
-	# quit app
-	sys.exit()
+    # quit app
+    sys.exit()
+
+
+def parseArguments():
+    parser = argparse.ArgumentParser(description='Automate the Ikon Reservation system!')
+    parser.add_argument('-e', '--email', type=str,
+                        help='Provide Ikon login email address', required=True)
+    parser.add_argument('-p', '--password', type=str,
+                        help='Provide Ikon login password', required=True)
+    return vars(parser.parse_args())
+
 
 if __name__ == "__main__":
     main()
